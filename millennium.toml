@@ -1,0 +1,13 @@
+[plugin]
+id = "steam-roulette"
+name = "Steam Roulette"
+version = "1.0.0"
+author = "mrgee-host"
+description = "Play random games from your Steam library"
+
+[backend]
+entry = "backend/main.lua"
+sources = ["backend/**/*.lua"]
+
+[frontend]
+entry = ".millennium/Dist/index.js"
