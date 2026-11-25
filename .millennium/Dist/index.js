@@ -162,24 +162,16 @@ let PluginEntryPointMain = function() {
             } catch (e) {}
         }
 
-        function getHeroUrls(appid) {
-            if (!appid) return [];
-            return [
-                `/assets/${appid}/library_hero.jpg`,
-                `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${appid}/library_hero.jpg`,
-                `https://cdn.akamai.steamstatic.com/steam/apps/${appid}/library_hero.jpg`,
-                `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/library_hero.jpg`,
-                `https://cdn.akamai.steamstatic.com/steam/apps/${appid}/header.jpg`
-            ];
-        }
-
-        function getPosterUrls(appid) {
+                function getPosterUrls(appid) {
             if (!appid) return [];
             return [
                 `/assets/${appid}/library_600x900.jpg`,
+                `https://steamloopback.host/assets/${appid}/library_600x900.jpg`,
+                `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900_2x.jpg`,
+                `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`,
                 `https://cdn.akamai.steamstatic.com/steam/apps/${appid}/library_600x900_2x.jpg`,
                 `https://cdn.akamai.steamstatic.com/steam/apps/${appid}/library_600x900.jpg`,
-                `https://cdn.akamai.steamstatic.com/steam/apps/${appid}/header.jpg`
+                `https://steamcdn-a.akamaihd.net/steam/apps/${appid}/library_600x900.jpg`
             ];
         }
 
@@ -187,9 +179,9 @@ let PluginEntryPointMain = function() {
         function loadConfig() {
             try {
                 const s = localStorage.getItem(CONFIG_KEY);
-                return s ? JSON.parse(s) : { installedOnly: false, unplayedOnly: false, selectedCollection: "all", soundEnabled: true };
+                return s ? JSON.parse(s) : { installedOnly: false, unplayedOnly: false, selectedCollection: "all", soundEnabled: true, maxShuffles: 5 };
             } catch (e) {
-                return { installedOnly: false, unplayedOnly: false, selectedCollection: "all", soundEnabled: true };
+                return { installedOnly: false, unplayedOnly: false, selectedCollection: "all", soundEnabled: true, maxShuffles: 5 };
             }
         }
         function saveConfig(cfg) {
@@ -507,19 +499,107 @@ let PluginEntryPointMain = function() {
             `;
         }
 
-        function PosterCardItem(props) {
-            const { game, isWinner, shufflePhase, index, totalCards } = props;
+        function RecentThumbnailItem(props) {
+            const { game, isSelected, onClick } = props;
             const [urlIdx, setUrlIdx] = useState(0);
-
-            const urls = useMemo(() => getPosterUrls(game ? game.appid : null), [game]);
-            const currentSrc = urls[urlIdx] || urls[urls.length - 1] || "";
+            const [failedAll, setFailedAll] = useState(false);
+            const urls = useMemo(() => getPosterUrls(game ? game.appid : null), [game?.appid]);
 
             useEffect(() => {
                 setUrlIdx(0);
+                setFailedAll(false);
             }, [game?.appid]);
 
             const handleError = useCallback(() => {
-                setUrlIdx(i => (i + 1 < urls.length ? i + 1 : i));
+                setUrlIdx(i => {
+                    if (i + 1 < urls.length) {
+                        return i + 1;
+                    } else {
+                        setFailedAll(true);
+                        return i;
+                    }
+                });
+            }, [urls]);
+
+            return h("div", {
+                onClick: onClick,
+                title: `${game?.name} (Click to choose)`,
+                style: {
+                    position: "relative",
+                    width: "36px",
+                    height: "50px",
+                    borderRadius: "6px",
+                    overflow: "hidden",
+                    cursor: "pointer",
+                    border: isSelected ? "2px solid #06BFFF" : "1px solid rgba(255, 255, 255, 0.18)",
+                    boxShadow: isSelected ? "0 0 10px rgba(6, 191, 255, 0.65)" : "0 2px 5px rgba(0, 0, 0, 0.4)",
+                    transform: isSelected ? "scale(1.06)" : "scale(1)",
+                    transition: "all 0.18s ease",
+                    backgroundColor: "#10161f",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textAlign: "center"
+                }
+            },
+                (!failedAll && urls.length > 0)
+                    ? h("img", {
+                        src: urls[urlIdx],
+                        onError: handleError,
+                        alt: "",
+                        style: { width: "100%", height: "100%", objectFit: "cover", display: "block" }
+                    })
+                    : h("div", {
+                        style: {
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "linear-gradient(135deg, #182230 0%, #0d141e 100%)",
+                            padding: "2px",
+                            boxSizing: "border-box"
+                        }
+                    },
+                        h("span", { style: { fontSize: "14px" } }, "🎰"),
+                        h("span", {
+                            style: {
+                                fontSize: "7px",
+                                fontWeight: "700",
+                                color: "#66c0f4",
+                                lineHeight: "1.1",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                maxWidth: "32px"
+                            }
+                        }, game?.name ? game.name.substring(0, 4) : "")
+                    )
+            );
+        }
+
+        function PosterCardItem(props) {
+            const { game, isWinner, shufflePhase, index, totalCards } = props;
+            const [urlIdx, setUrlIdx] = useState(0);
+            const [failedAll, setFailedAll] = useState(false);
+
+            const urls = useMemo(() => getPosterUrls(game ? game.appid : null), [game?.appid]);
+
+            useEffect(() => {
+                setUrlIdx(0);
+                setFailedAll(false);
+            }, [game?.appid]);
+
+            const handleError = useCallback(() => {
+                setUrlIdx(i => {
+                    if (i + 1 < urls.length) {
+                        return i + 1;
+                    } else {
+                        setFailedAll(true);
+                        return i;
+                    }
+                });
             }, [urls]);
 
             const offset = index - 2;
@@ -605,17 +685,44 @@ let PluginEntryPointMain = function() {
                 }
             },
                 
-                h("img", {
-                    src: currentSrc,
-                    onError: handleError,
-                    alt: game?.name || "Game",
-                    style: {
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block"
-                    }
-                }),
+                (!failedAll && urls.length > 0)
+                    ? h("img", {
+                        src: urls[urlIdx],
+                        onError: handleError,
+                        alt: "",
+                        style: {
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            display: "block"
+                        }
+                    })
+                    : h("div", {
+                        style: {
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "linear-gradient(145deg, #1a2535 0%, #0c131d 100%)",
+                            border: "1px dashed rgba(102, 192, 244, 0.25)",
+                            boxSizing: "border-box",
+                            padding: "16px",
+                            textAlign: "center"
+                        }
+                    },
+                        h("span", { style: { fontSize: "38px", marginBottom: "12px", opacity: 0.85 } }, "🎰"),
+                        h("div", {
+                            style: {
+                                fontSize: "13px",
+                                fontWeight: "800",
+                                color: "#66c0f4",
+                                lineHeight: "1.3",
+                                wordBreak: "break-word"
+                            }
+                        }, game?.name || "Game")
+                    ),
 
                 
 
@@ -656,7 +763,7 @@ let PluginEntryPointMain = function() {
                             color: "#06BFFF",
                             boxShadow: "0 0 8px rgba(6,191,255,0.4)"
                         }
-                    }, "★ SELECTED"),
+                    }, "SELECTED"),
                     h("span", {
                         style: {
                             padding: "3px 8px",
@@ -666,7 +773,7 @@ let PluginEntryPointMain = function() {
                             backgroundColor: game?.isInstalled ? "rgba(92,126,16,0.95)" : "rgba(40,40,40,0.88)",
                             color: "#ffffff"
                         }
-                    }, game?.isInstalled ? "✓ Installed" : "Not Installed")
+                    }, game?.isInstalled ? "Installed" : "Not Installed")
                 ),
 
                 isWinner && shufflePhase === "reveal" && h("div", {
@@ -712,6 +819,296 @@ let PluginEntryPointMain = function() {
             );
         }
 
+        function CustomDeckDropdown(props) {
+            const { value, options, onChange } = props;
+            const [isOpen, setIsOpen] = useState(false);
+            const ref = useRef(null);
+
+            const selected = options.find(o => o.value === value) || options[0];
+
+            useEffect(() => {
+                const handleClickOutside = (e) => {
+                    if (ref.current && !ref.current.contains(e.target)) {
+                        setIsOpen(false);
+                    }
+                };
+                window.addEventListener("mousedown", handleClickOutside);
+                return () => window.removeEventListener("mousedown", handleClickOutside);
+            }, []);
+
+            return h("div", {
+                ref: ref,
+                style: {
+                    position: "relative",
+                    width: "100%",
+                    userSelect: "none",
+                    zIndex: isOpen ? 1000 : 2
+                }
+            },
+                h("div", {
+                    onClick: () => setIsOpen(!isOpen),
+                    style: {
+                        width: "100%",
+                        padding: "8px 12px",
+                        backgroundColor: "#101721",
+                        color: "#ffffff",
+                        border: isOpen ? "1px solid #1a78c2" : "1px solid #233143",
+                        borderRadius: "6px",
+                        fontSize: "13px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        boxSizing: "border-box",
+                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.35)",
+                        transition: "all 0.18s ease"
+                    }
+                },
+                    h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+                        selected ? selected.label : "Select Deck"
+                    ),
+                    h("svg", {
+                        width: "12",
+                        height: "12",
+                        viewBox: "0 0 24 24",
+                        fill: "none",
+                        stroke: "#ffffff",
+                        strokeWidth: "2.5",
+                        strokeLinecap: "round",
+                        strokeLinejoin: "round",
+                        style: {
+                            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                            transition: "transform 0.18s ease",
+                            marginLeft: "8px",
+                            flexShrink: 0
+                        }
+                    },
+                        h("path", { d: "M6 9l6 6 6-6" })
+                    )
+                ),
+                isOpen && h("div", {
+                    style: {
+                        position: "absolute",
+                        top: "calc(100% + 4px)",
+                        left: 0,
+                        right: 0,
+                        backgroundColor: "#101822",
+                        border: "1px solid #233143",
+                        borderRadius: "6px",
+                        overflowY: "auto",
+                        maxHeight: "220px",
+                        zIndex: 1001,
+                        boxShadow: "0 10px 30px rgba(0, 0, 0, 0.85)",
+                        padding: "4px",
+                        boxSizing: "border-box"
+                    }
+                },
+                    options.map(opt => {
+                        const isCur = opt.value === value;
+                        return h("div", {
+                            key: opt.value,
+                            onClick: () => {
+                                onChange(opt.value);
+                                setIsOpen(false);
+                            },
+                            style: {
+                                padding: "8px 12px",
+                                borderRadius: "4px",
+                                fontSize: "12px",
+                                fontWeight: isCur ? "700" : "600",
+                                color: "#ffffff",
+                                backgroundColor: isCur ? "#1a78c2" : "transparent",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                transition: "background-color 0.12s ease",
+                                marginBottom: "2px"
+                            },
+                            onMouseEnter: e => {
+                                if (!isCur) e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.08)";
+                            },
+                            onMouseLeave: e => {
+                                if (!isCur) e.currentTarget.style.backgroundColor = "transparent";
+                            }
+                        },
+                            h("span", null, opt.label)
+                        );
+                    })
+                )
+            );
+        }
+
+        function CustomMiniDropdown(props) {
+            const { value, options, onChange } = props;
+            const [isOpen, setIsOpen] = useState(false);
+            const ref = useRef(null);
+
+            const selected = options.find(o => o.value === value) || options[0];
+
+            useEffect(() => {
+                const handleClickOutside = (e) => {
+                    if (ref.current && !ref.current.contains(e.target)) {
+                        setIsOpen(false);
+                    }
+                };
+                window.addEventListener("mousedown", handleClickOutside);
+                return () => window.removeEventListener("mousedown", handleClickOutside);
+            }, []);
+
+            return h("div", {
+                ref: ref,
+                style: {
+                    position: "relative",
+                    display: "inline-block",
+                    userSelect: "none",
+                    zIndex: isOpen ? 1000 : 2
+                }
+            },
+                h("div", {
+                    onClick: () => setIsOpen(!isOpen),
+                    style: {
+                        padding: "4px 9px",
+                        backgroundColor: "#101721",
+                        color: "#ffffff",
+                        border: isOpen ? "1px solid #1a78c2" : "1px solid #233143",
+                        borderRadius: "6px",
+                        fontSize: "11px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        boxShadow: "0 2px 5px rgba(0, 0, 0, 0.35)",
+                        transition: "all 0.15s ease"
+                    }
+                },
+                    h("span", null, selected ? selected.label : ""),
+                    h("svg", {
+                        width: "10",
+                        height: "10",
+                        viewBox: "0 0 24 24",
+                        fill: "none",
+                        stroke: "#ffffff",
+                        strokeWidth: "2.5",
+                        strokeLinecap: "round",
+                        strokeLinejoin: "round",
+                        style: {
+                            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                            transition: "transform 0.15s ease"
+                        }
+                    },
+                        h("path", { d: "M6 9l6 6 6-6" })
+                    )
+                ),
+                isOpen && h("div", {
+                    style: {
+                        position: "absolute",
+                        top: "calc(100% + 4px)",
+                        left: 0,
+                        backgroundColor: "#101822",
+                        border: "1px solid #233143",
+                        borderRadius: "6px",
+                        overflowY: "auto",
+                        minWidth: "110px",
+                        zIndex: 1001,
+                        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.85)",
+                        padding: "4px",
+                        boxSizing: "border-box"
+                    }
+                },
+                    options.map(opt => {
+                        const isCur = opt.value === value;
+                        return h("div", {
+                            key: opt.value,
+                            onClick: () => {
+                                onChange(opt.value);
+                                setIsOpen(false);
+                            },
+                            style: {
+                                padding: "6px 10px",
+                                borderRadius: "4px",
+                                fontSize: "11px",
+                                fontWeight: isCur ? "700" : "600",
+                                color: "#ffffff",
+                                backgroundColor: isCur ? "#1a78c2" : "transparent",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                transition: "background-color 0.12s ease",
+                                marginBottom: "2px"
+                            },
+                            onMouseEnter: e => {
+                                if (!isCur) e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.08)";
+                            },
+                            onMouseLeave: e => {
+                                if (!isCur) e.currentTarget.style.backgroundColor = "transparent";
+                            }
+                        },
+                            h("span", null, opt.label)
+                        );
+                    })
+                )
+            );
+        }
+
+        function CustomCheckbox(props) {
+            const { checked, onChange, label } = props;
+            const [hovered, setHovered] = useState(false);
+
+            return h("label", {
+                onClick: (e) => {
+                    e.preventDefault();
+                    onChange(!checked);
+                },
+                onMouseEnter: () => setHovered(true),
+                onMouseLeave: () => setHovered(false),
+                style: {
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "7px",
+                    fontSize: "11px",
+                    fontWeight: "600",
+                    color: checked ? "#ffffff" : (hovered ? "#c7d5e0" : "#8f98a0"),
+                    cursor: "pointer",
+                    userSelect: "none",
+                    transition: "color 0.15s ease"
+                }
+            },
+                h("div", {
+                    style: {
+                        width: "14px",
+                        height: "14px",
+                        borderRadius: "4px",
+                        backgroundColor: checked ? "rgba(0, 210, 255, 0.18)" : "rgba(10, 16, 24, 0.65)",
+                        border: checked
+                            ? "1.5px solid #00d2ff"
+                            : (hovered ? "1.5px solid rgba(0, 210, 255, 0.5)" : "1.5px solid rgba(255, 255, 255, 0.22)"),
+                        boxShadow: checked ? "0 0 8px rgba(0, 210, 255, 0.4)" : "none",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxSizing: "border-box",
+                        transition: "all 0.18s ease"
+                    }
+                },
+                    checked && h("svg", {
+                        width: "9",
+                        height: "9",
+                        viewBox: "0 0 12 12",
+                        fill: "none",
+                        stroke: "#00d2ff",
+                        strokeWidth: "2.2",
+                        strokeLinecap: "round",
+                        strokeLinejoin: "round"
+                    },
+                        h("path", { d: "M2 6l3 3 5-5" })
+                    )
+                ),
+                h("span", null, label)
+            );
+        }
+
         function RandomPickerUI(props) {
             const [cfg, setCfg] = useState(loadConfig);
             const [apps, setApps] = useState([]);
@@ -721,6 +1118,9 @@ let PluginEntryPointMain = function() {
             const [unplayedOnly, setUnplayedOnly] = useState(cfg.unplayedOnly || false);
             const [onlyGames, setOnlyGames] = useState(true);
             const [soundEnabled, setSoundEnabled] = useState(cfg.soundEnabled !== false);
+            const [maxShuffles, setMaxShuffles] = useState(cfg.maxShuffles !== undefined ? cfg.maxShuffles : 5);
+            const [shufflesCount, setShufflesCount] = useState(0);
+            const [shuffleHistory, setShuffleHistory] = useState([]);
 
             useEffect(() => {
                 if (collections.length > 0) {
@@ -732,35 +1132,7 @@ let PluginEntryPointMain = function() {
 
             const [shufflePhase, setShufflePhase] = useState("idle");
             const [winnerGame, setWinnerGame] = useState(null);
-            const [heroBackground, setHeroBackground] = useState("");
-
-            useEffect(() => {
-                if (shufflePhase === "reveal" && winnerGame?.appid) {
-                    const urls = getHeroUrls(winnerGame.appid);
-                    let idx = 0;
-                    const img = new Image();
-                    img.onload = () => {
-                        const chosen = urls[idx];
-                        setHeroBackground(chosen);
-                        if (typeof props?.onHeroChange === "function") {
-                            props.onHeroChange(chosen);
-                        }
-                    };
-                    img.onerror = () => {
-                        idx++;
-                        if (idx < urls.length) {
-                            img.src = urls[idx];
-                        }
-                    };
-                    img.src = urls[0];
-                } else if (shufflePhase === "gather" || shufflePhase === "riffle") {
-                    setHeroBackground("");
-                    if (typeof props?.onHeroChange === "function") {
-                        props.onHeroChange("");
-                    }
-                }
-            }, [shufflePhase, winnerGame?.appid]);
-
+            
             const [fanDeckGames, setFanDeckGames] = useState([]);
 
             useEffect(() => {
@@ -770,9 +1142,9 @@ let PluginEntryPointMain = function() {
             const refreshData = useCallback(() => {
                 try {
                     const loadedApps = fetchSteamApps();
-                    setApps(loadedApps);
+                    setApps(prev => (prev.length === loadedApps.length && prev.length > 0 ? prev : loadedApps));
                     const loadedCols = fetchSteamCollections(loadedApps);
-                    setCollections(loadedCols);
+                    setCollections(prev => (prev.length === loadedCols.length && prev.length > 0 ? prev : loadedCols));
                 } catch (e) {
                     console.error("[SteamRoulette] refreshData error:", e);
                 }
@@ -780,15 +1152,13 @@ let PluginEntryPointMain = function() {
 
             useEffect(() => {
                 refreshData();
-                const timer = setTimeout(refreshData, 1000);
-                return () => clearTimeout(timer);
             }, [refreshData]);
 
             useEffect(() => {
-                const newCfg = { ...cfg, selectedCollection, installedOnly, unplayedOnly, soundEnabled };
+                const newCfg = { ...cfg, selectedCollection, installedOnly, unplayedOnly, soundEnabled, maxShuffles };
                 setCfg(newCfg);
                 saveConfig(newCfg);
-            }, [selectedCollection, installedOnly, unplayedOnly, soundEnabled]);
+            }, [selectedCollection, installedOnly, unplayedOnly, soundEnabled, maxShuffles]);
 
             const candidates = useMemo(() => {
                 if (!apps.length || !collections.length) return [];
@@ -813,6 +1183,9 @@ let PluginEntryPointMain = function() {
                 return filtered;
             }, [apps, collections, selectedCollection, installedOnly, unplayedOnly, onlyGames]);
 
+            const deckKey = `${selectedCollection}_${installedOnly}_${unplayedOnly}_${onlyGames}`;
+            const lastDeckKeyRef = useRef("");
+
             useEffect(() => {
                 if (!candidates || candidates.length === 0) {
                     setFanDeckGames([]);
@@ -820,6 +1193,11 @@ let PluginEntryPointMain = function() {
                 }
                 if (shufflePhase !== "idle") return;
 
+                if (fanDeckGames.length === 5 && lastDeckKeyRef.current === deckKey) {
+                    return;
+                }
+
+                lastDeckKeyRef.current = deckKey;
                 const shuffled = [...candidates].sort(() => 0.5 - Math.random());
                 const five = [];
                 for (let i = 0; i < 5; i++) {
@@ -827,7 +1205,7 @@ let PluginEntryPointMain = function() {
                 }
                 setFanDeckGames(five);
                 setWinnerGame(null);
-            }, [candidates, shufflePhase]);
+            }, [candidates, shufflePhase, deckKey, fanDeckGames.length]);
 
             const timersRef = useRef([]);
             const clearAllTimers = () => {
@@ -836,10 +1214,23 @@ let PluginEntryPointMain = function() {
             };
 
             const isShuffling = shufflePhase !== "idle" && shufflePhase !== "reveal";
+            const isLimitReached = maxShuffles > 0 && shufflesCount >= maxShuffles;
+
+            const handleSelectHistory = useCallback((g) => {
+                if (isShuffling) return;
+                setWinnerGame(g);
+                setShufflePhase("reveal");
+                setFanDeckGames(prev => {
+                    const next = [...prev];
+                    next[2] = g;
+                    return next;
+                });
+            }, [isShuffling]);
 
             const handleShuffleDeck = useCallback(() => {
-                if (candidates.length === 0 || isShuffling) return;
+                if (candidates.length === 0 || isShuffling || isLimitReached) return;
 
+                setShufflesCount(c => c + 1);
                 clearAllTimers();
                 ensureCustomStyles();
 
@@ -896,6 +1287,10 @@ let PluginEntryPointMain = function() {
                 const t3 = setTimeout(() => {
                     setWinnerGame(chosen);
                     setShufflePhase("reveal");
+                    setShuffleHistory(prev => {
+                        const filtered = prev.filter(g => g.appid !== chosen.appid);
+                        return [chosen, ...filtered].slice(0, 5);
+                    });
                     if (soundEnabled) playCardFlourishAudio("reveal");
                 }, 1780);
                 timersRef.current.push(t3);
@@ -964,7 +1359,7 @@ let PluginEntryPointMain = function() {
                 },
                 formRow: {
                     position: "relative",
-                    zIndex: 1,
+                    zIndex: 20,
                     marginBottom: "10px"
                 },
                 label: {
@@ -990,7 +1385,7 @@ let PluginEntryPointMain = function() {
                 },
                 filterBar: {
                     position: "relative",
-                    zIndex: 1,
+                    zIndex: 5,
                     display: "flex",
                     flexWrap: "wrap",
                     alignItems: "center",
@@ -1030,18 +1425,25 @@ let PluginEntryPointMain = function() {
                     position: "relative",
                     zIndex: 1,
                     width: "100%",
-                    padding: "14px",
-                    fontSize: "15px",
+                    padding: "13px",
+                    fontSize: "14px",
                     fontWeight: "800",
-                    color: "#ffffff",
-                    letterSpacing: "0.5px",
-                    background: isShuffling
-                        ? "linear-gradient(90deg, #3d4f63, #222d38)"
-                        : "linear-gradient(90deg, #06BFFF 0%, #2D73FF 100%)",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: candidates.length === 0 || isShuffling ? "not-allowed" : "pointer",
-                    boxShadow: isShuffling ? "none" : "0 4px 20px rgba(45, 115, 255, 0.4)",
+                    color: (isShuffling || isLimitReached) ? "#7a8b9e" : "#00d2ff",
+                    letterSpacing: "0.8px",
+                    textTransform: "uppercase",
+                    background: (isShuffling || isLimitReached)
+                        ? "rgba(10, 16, 24, 0.45)"
+                        : "rgba(10, 16, 24, 0.65)",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    border: (isShuffling || isLimitReached)
+                        ? "1px solid rgba(255, 255, 255, 0.10)"
+                        : "1.5px solid #00d2ff",
+                    borderRadius: "10px",
+                    cursor: candidates.length === 0 || isShuffling || isLimitReached ? "not-allowed" : "pointer",
+                    boxShadow: (isShuffling || isLimitReached)
+                        ? "none"
+                        : "0 0 10px rgba(0, 210, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1057,58 +1459,70 @@ let PluginEntryPointMain = function() {
                 },
                 btnPlay: {
                     flex: 1.2,
-                    padding: "11px",
+                    padding: "11px 14px",
                     fontSize: "12px",
                     fontWeight: "800",
-                    color: "#ffffff",
-                    backgroundColor: "#5c7e10",
-                    border: "none",
-                    borderRadius: "6px",
+                    color: "#85e01b",
+                    letterSpacing: "0.4px",
+                    background: "rgba(10, 16, 24, 0.65)",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    border: "1.5px solid #85e01b",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    boxShadow: "0 0 10px rgba(133, 224, 27, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+                    transition: "all 0.2s ease"
+                },
+                btnSecondary: {
+                    flex: 1,
+                    padding: "11px 14px",
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    color: "#c084fc",
+                    background: "rgba(10, 16, 24, 0.65)",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    border: "1.5px solid #c084fc",
+                    borderRadius: "8px",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: "5px",
-                    boxShadow: "0 3px 12px rgba(92,126,16,0.35)"
-                },
-                btnSecondary: {
-                    flex: 1,
-                    padding: "11px",
-                    fontSize: "11px",
-                    fontWeight: "700",
-                    color: "#c7d5e0",
-                    backgroundColor: "#223142",
-                    border: "1px solid #32475e",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "4px"
+                    boxShadow: "0 0 10px rgba(192, 132, 252, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+                    transition: "all 0.2s ease"
                 }
             };
 
             const buttonLabel = useMemo(() => {
                 if (candidates.length === 0) return "Deck is Empty";
                 if (isShuffling) return "Shuffling...";
+                if (isLimitReached) return "Shuffle Limit Reached (Pick a Game)";
+                if (maxShuffles > 0) return `SHUFFLE DECK NOW (${maxShuffles - shufflesCount} left)`;
                 return "SHUFFLE DECK NOW";
-            }, [isShuffling, candidates.length]);
+            }, [isShuffling, candidates.length, isLimitReached, maxShuffles, shufflesCount]);
 
             return h("div", { style: styles.wrapper },
                 h("div", {
                     style: {
                         position: "absolute",
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundImage: heroBackground ? `url("${heroBackground}")` : "none",
+                        top: "-30px",
+                        left: "-30px",
+                        right: "-30px",
+                        bottom: "-30px",
+                        backgroundImage: (shufflePhase === "reveal" && winnerGame?.appid)
+                            ? `url("${getPosterUrls(winnerGame.appid)[0]}")`
+                            : "none",
                         backgroundSize: "cover",
-                        backgroundPosition: "center 20%",
-                        filter: "blur(1.5px)",
-                        transform: "scale(1.05)",
-                        opacity: heroBackground && shufflePhase === "reveal" ? 0.42 : 0,
-                        transition: "opacity 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), background-image 0.4s ease",
+                        backgroundPosition: "center",
+                        filter: "blur(22px) saturate(190%) brightness(0.85)",
+                        transform: "scale(1.12)",
+                        opacity: (shufflePhase === "reveal" && winnerGame?.appid) ? 0.85 : 0,
+                        transition: "opacity 0.8s ease, background-image 0.5s ease",
                         zIndex: 0,
                         pointerEvents: "none"
                     }
@@ -1120,15 +1534,14 @@ let PluginEntryPointMain = function() {
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        background: heroBackground && shufflePhase === "reveal"
-                            ? "linear-gradient(to bottom, rgba(16, 23, 32, 0.62) 0%, rgba(13, 19, 27, 0.82) 40%, rgba(10, 15, 22, 0.95) 100%)"
-                            : "none",
-                        transition: "background 0.65s ease",
+                        background: (shufflePhase === "reveal" && winnerGame?.appid)
+                            ? "radial-gradient(ellipse at center, rgba(16, 23, 32, 0.25) 0%, rgba(16, 23, 32, 0.65) 100%)"
+                            : "transparent",
+                        transition: "background 0.8s ease",
                         zIndex: 0,
                         pointerEvents: "none"
                     }
                 }),
-                
                 h("div", { style: styles.header },
                     h("div", { style: styles.titleGroup },
                         h("span", { style: { fontSize: "24px" } }, "🎰"),
@@ -1146,35 +1559,58 @@ let PluginEntryPointMain = function() {
 
                 h("div", { style: styles.formRow },
                     h("label", { style: styles.label }, "SELECT SOURCE DECK:"),
-                    h("select", {
-                        style: styles.select,
+                    h(CustomDeckDropdown, {
                         value: selectedCollection,
-                        onChange: e => setSelectedCollection(e.target.value)
-                    },
-                        collections.length === 0
-                            ? h("option", { value: "" }, "No Steam Collections Found")
-                            : collections.map(c => h("option", { key: c.id, value: c.id }, c.name))
-                    )
+                        options: collections.length === 0
+                            ? [{ value: "", label: "No Steam Collections Found" }]
+                            : collections.map(c => ({ value: c.id, label: c.name })),
+                        onChange: val => {
+                            setSelectedCollection(val);
+                            setShufflesCount(0);
+                        }
+                    })
                 ),
 
                 h("div", { style: styles.filterBar },
-                    h("label", { style: styles.checkboxLabel },
-                        h("input", {
-                            type: "checkbox",
-                            style: styles.checkbox,
-                            checked: installedOnly,
-                            onChange: e => setInstalledOnly(e.target.checked)
-                        }),
-                        "Installed"
-                    ),
-                    h("label", { style: styles.checkboxLabel },
-                        h("input", {
-                            type: "checkbox",
-                            style: styles.checkbox,
-                            checked: unplayedOnly,
-                            onChange: e => setUnplayedOnly(e.target.checked)
-                        }),
-                        "Unplayed"
+                    h(CustomCheckbox, {
+                        checked: installedOnly,
+                        label: "Installed",
+                        onChange: val => {
+                            setInstalledOnly(val);
+                            setShufflesCount(0);
+                        }
+                    }),
+                    h(CustomCheckbox, {
+                        checked: unplayedOnly,
+                        label: "Unplayed",
+                        onChange: val => {
+                            setUnplayedOnly(val);
+                            setShufflesCount(0);
+                        }
+                    }),
+                    h("div", {
+                        style: {
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            fontSize: "11px",
+                            color: "#8f98a0"
+                        }
+                    },
+                        h("span", { style: { color: "#c7d5e0", fontWeight: "600" } }, "Max:"),
+                        h(CustomMiniDropdown, {
+                            value: maxShuffles,
+                            options: [
+                                { value: 3, label: "3 Shuffles" },
+                                { value: 5, label: "5 Shuffles" },
+                                { value: 10, label: "10 Shuffles" },
+                                { value: 0, label: "Unlimited" }
+                            ],
+                            onChange: val => {
+                                setMaxShuffles(Number(val));
+                                setShufflesCount(0);
+                            }
+                        })
                     ),
                     h("span", { style: { fontSize: "11px", color: "#66c0f4", fontWeight: "700" } },
                         `${candidates.length} Cards in Deck`
@@ -1197,9 +1633,58 @@ let PluginEntryPointMain = function() {
                     })
                 ),
 
+                shuffleHistory.length > 0 && h("div", {
+                    style: {
+                        position: "relative",
+                        zIndex: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        backgroundColor: "rgba(10, 16, 24, 0.65)",
+                        backdropFilter: "blur(12px)",
+                        WebkitBackdropFilter: "blur(12px)",
+                        border: isLimitReached ? "1.5px solid #ffc83b" : "1.5px solid rgba(245, 158, 11, 0.40)",
+                        borderRadius: "10px",
+                        padding: "7px 12px",
+                        marginBottom: "12px",
+                        boxShadow: isLimitReached
+                            ? "0 0 16px rgba(255, 200, 59, 0.45), inset 0 0 8px rgba(255, 200, 59, 0.12)"
+                            : "0 0 10px rgba(245, 158, 11, 0.18), inset 0 0 6px rgba(245, 158, 11, 0.05)"
+                    }
+                },
+                    h("div", { style: { display: "flex", alignItems: "center", gap: "6px" } },
+                        h("span", {
+                            style: {
+                                fontSize: "10px",
+                                fontWeight: "800",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.6px",
+                                color: isLimitReached ? "#ffc83b" : "#f59e0b"
+                            }
+                        }, isLimitReached ? "Pick from History:" : "Recent Shuffles:"),
+                        maxShuffles > 0 && h("span", {
+                            style: {
+                                fontSize: "10px",
+                                color: isLimitReached ? "#ffc83b" : "rgba(245, 158, 11, 0.75)",
+                                fontWeight: "700"
+                            }
+                        }, `(${shufflesCount}/${maxShuffles})`)
+                    ),
+                    h("div", { style: { display: "flex", gap: "6px", alignItems: "center" } },
+                        shuffleHistory.map((g) => {
+                            return h(RecentThumbnailItem, {
+                                key: `hist-${g.appid}`,
+                                game: g,
+                                isSelected: winnerGame?.appid === g.appid,
+                                onClick: () => handleSelectHistory(g)
+                            });
+                        })
+                    )
+                ),
+
                 h("button", {
                     style: styles.shuffleButton,
-                    disabled: candidates.length === 0 || isShuffling,
+                    disabled: candidates.length === 0 || isShuffling || isLimitReached,
                     onClick: handleShuffleDeck
                 },
                     buttonLabel
@@ -1233,7 +1718,6 @@ let PluginEntryPointMain = function() {
 
                 function ModalWrapper() {
                     const [isOpen, setIsOpen] = useState(false);
-                    const [currentHero, setCurrentHero] = useState("");
                     const [pos, setPos] = useState({ bottom: 35, right: 25 });
 
                     useEffect(() => {
@@ -1345,11 +1829,6 @@ let PluginEntryPointMain = function() {
                         width: "100vw",
                         height: "100vh",
                         backgroundColor: "rgba(0, 0, 0, 0.82)",
-                        backgroundImage: currentHero ? `radial-gradient(ellipse at center, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.92) 100%), url("${currentHero}")` : "none",
-                        backgroundSize: "cover",
-                        backgroundPosition: "center center",
-                        backdropFilter: "blur(8px)",
-                        transition: "background-image 0.6s ease",
                         zIndex: 100000,
                         display: "flex",
                         alignItems: "center",
@@ -1405,7 +1884,7 @@ let PluginEntryPointMain = function() {
                                     style: closeBtnStyle,
                                     onClick: () => setIsOpen(false)
                                 }, "✕"),
-                                h(RandomPickerUI, { onHeroChange: setCurrentHero })
+                                h(RandomPickerUI, null)
                             )
                         )
                     );
