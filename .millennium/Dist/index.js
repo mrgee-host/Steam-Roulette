@@ -179,9 +179,9 @@ let PluginEntryPointMain = function() {
         function loadConfig() {
             try {
                 const s = localStorage.getItem(CONFIG_KEY);
-                return s ? JSON.parse(s) : { installedOnly: false, unplayedOnly: false, selectedCollection: "all", soundEnabled: true, maxShuffles: 5 };
+                return s ? JSON.parse(s) : { installedOnly: false, unplayedOnly: false, selectedCollection: "all", soundEnabled: true, maxShuffles: 5, durationFilter: "all" };
             } catch (e) {
-                return { installedOnly: false, unplayedOnly: false, selectedCollection: "all", soundEnabled: true, maxShuffles: 5 };
+                return { installedOnly: false, unplayedOnly: false, selectedCollection: "all", soundEnabled: true, maxShuffles: 5, durationFilter: "all" };
             }
         }
         function saveConfig(cfg) {
@@ -190,12 +190,12 @@ let PluginEntryPointMain = function() {
             } catch (e) {}
         }
 
-        function formatPlaytime(minutes, lastPlayed) {
-            if ((!minutes || minutes <= 0) && (!lastPlayed || lastPlayed <= 0)) {
-                return "Unplayed";
+        function formatPlaytime(minutes) {
+            if (!minutes || minutes <= 0) {
+                return "";
             }
             
-            const rawHours = (minutes || 0) / 60;
+            const rawHours = minutes / 60;
             const hours = Math.max(0.1, rawHours).toFixed(1);
             return `${hours} hrs`;
         }
@@ -580,7 +580,7 @@ let PluginEntryPointMain = function() {
         }
 
         function PosterCardItem(props) {
-            const { game, isWinner, shufflePhase, index, totalCards } = props;
+            const { game, isWinner, shufflePhase, index, totalCards, hltbInfo } = props;
             const [urlIdx, setUrlIdx] = useState(0);
             const [failedAll, setFailedAll] = useState(false);
 
@@ -802,19 +802,35 @@ let PluginEntryPointMain = function() {
                             marginBottom: "3px"
                         }
                     }, game?.name),
-                    h("div", {
+                    (hltbInfo && (hltbInfo.main > 0 || hltbInfo.comp100 > 0)) && h("div", {
                         style: {
                             display: "flex",
-                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: "8px",
                             fontSize: "10px",
-                            color: "#8f98a0"
+                            marginBottom: "3px",
+                            color: "#c7d5e0"
                         }
                     },
-                        h("span", null, h("strong", { style: { color: "#66c0f4" } }, formatPlaytime(game?.playtime, game?.lastPlayed))),
-                        formatLastPlayed(game?.lastPlayed)
-                            ? h("span", null, h("strong", { style: { color: "#66c0f4" } }, formatLastPlayed(game?.lastPlayed)))
-                            : null
-                    )
+                        hltbInfo.main > 0 && h("span", null, "Main: ", h("strong", { style: { color: "#06BFFF" } }, `${hltbInfo.main}h`)),
+                        hltbInfo.comp100 > 0 && h("span", null, "100%: ", h("strong", { style: { color: "#a3e635" } }, `${hltbInfo.comp100}h`))
+                    ),
+                    (() => {
+                        const pt = formatPlaytime(game?.playtime);
+                        const lp = formatLastPlayed(game?.lastPlayed);
+                        if (!pt && !lp) return null;
+                        return h("div", {
+                            style: {
+                                display: "flex",
+                                justifyContent: "space-between",
+                                fontSize: "10px",
+                                color: "#8f98a0"
+                            }
+                        },
+                            pt ? h("span", null, h("strong", { style: { color: "#66c0f4" } }, pt)) : h("span", null),
+                            lp ? h("span", null, h("strong", { style: { color: "#66c0f4" } }, lp)) : null
+                        );
+                    })()
                 )
             );
         }
@@ -922,6 +938,7 @@ let PluginEntryPointMain = function() {
                                 cursor: "pointer",
                                 display: "flex",
                                 alignItems: "center",
+                                whiteSpace: "nowrap",
                                 transition: "background-color 0.12s ease",
                                 marginBottom: "2px"
                             },
@@ -940,7 +957,7 @@ let PluginEntryPointMain = function() {
         }
 
         function CustomMiniDropdown(props) {
-            const { value, options, onChange } = props;
+            const { value, options, onChange, alignRight } = props;
             const [isOpen, setIsOpen] = useState(false);
             const ref = useRef(null);
 
@@ -1005,12 +1022,13 @@ let PluginEntryPointMain = function() {
                     style: {
                         position: "absolute",
                         top: "calc(100% + 4px)",
-                        left: 0,
+                        left: alignRight ? "auto" : 0,
+                        right: alignRight ? 0 : "auto",
                         backgroundColor: "#101822",
                         border: "1px solid #233143",
                         borderRadius: "6px",
                         overflowY: "auto",
-                        minWidth: "110px",
+                        minWidth: "124px",
                         zIndex: 1001,
                         boxShadow: "0 8px 24px rgba(0, 0, 0, 0.85)",
                         padding: "4px",
@@ -1035,6 +1053,7 @@ let PluginEntryPointMain = function() {
                                 cursor: "pointer",
                                 display: "flex",
                                 alignItems: "center",
+                                whiteSpace: "nowrap",
                                 transition: "background-color 0.12s ease",
                                 marginBottom: "2px"
                             },
@@ -1119,6 +1138,9 @@ let PluginEntryPointMain = function() {
             const [onlyGames, setOnlyGames] = useState(true);
             const [soundEnabled, setSoundEnabled] = useState(cfg.soundEnabled !== false);
             const [maxShuffles, setMaxShuffles] = useState(cfg.maxShuffles !== undefined ? cfg.maxShuffles : 5);
+            const [durationFilter, setDurationFilter] = useState(cfg.durationFilter || "all");
+            const [hltbMap, setHltbMap] = useState({});
+            const [hasHltbCache, setHasHltbCache] = useState(false);
             const [shufflesCount, setShufflesCount] = useState(0);
             const [shuffleHistory, setShuffleHistory] = useState([]);
 
@@ -1155,10 +1177,33 @@ let PluginEntryPointMain = function() {
             }, [refreshData]);
 
             useEffect(() => {
-                const newCfg = { ...cfg, selectedCollection, installedOnly, unplayedOnly, soundEnabled, maxShuffles };
+                let cancelled = false;
+                async function loadHltbCache() {
+                    try {
+                        const caller = (MILLENNIUM_API && MILLENNIUM_API.Millennium && typeof MILLENNIUM_API.Millennium.callServerMethod === "function")
+                            ? MILLENNIUM_API.Millennium.callServerMethod
+                            : (window.Millennium && typeof window.Millennium.callServerMethod === "function" ? window.Millennium.callServerMethod : null);
+                        if (!caller) return;
+                        const res = await caller(pluginName, "GetHltbMap", {});
+                        const parsed = typeof res === "string" ? JSON.parse(res) : res;
+                        if (!cancelled && parsed && parsed.map && typeof parsed.map === "object" && !Array.isArray(parsed.map)) {
+                            const count = Object.keys(parsed.map).length;
+                            setHltbMap(parsed.map);
+                            setHasHltbCache(!!parsed.hasPluginCache && count > 0);
+                        }
+                    } catch (e) {
+                        console.error("[SteamRoulette] loadHltbCache error:", e);
+                    }
+                }
+                loadHltbCache();
+                return () => { cancelled = true; };
+            }, []);
+
+            useEffect(() => {
+                const newCfg = { ...cfg, selectedCollection, installedOnly, unplayedOnly, soundEnabled, maxShuffles, durationFilter };
                 setCfg(newCfg);
                 saveConfig(newCfg);
-            }, [selectedCollection, installedOnly, unplayedOnly, soundEnabled, maxShuffles]);
+            }, [selectedCollection, installedOnly, unplayedOnly, soundEnabled, maxShuffles, durationFilter]);
 
             const candidates = useMemo(() => {
                 if (!apps.length || !collections.length) return [];
@@ -1179,11 +1224,22 @@ let PluginEntryPointMain = function() {
                 if (unplayedOnly) {
                     filtered = filtered.filter(a => a.playtime === 0);
                 }
+                if (hasHltbCache && durationFilter !== "all") {
+                    filtered = filtered.filter(a => {
+                        const info = hltbMap[String(a.appid)];
+                        const mainHrs = info ? Number(info.main || 0) : 0;
+                        if (!mainHrs || mainHrs <= 0) return false;
+                        if (durationFilter === "short") return mainHrs < 5;
+                        if (durationFilter === "regular") return mainHrs >= 5 && mainHrs <= 20;
+                        if (durationFilter === "epic") return mainHrs > 20;
+                        return true;
+                    });
+                }
 
                 return filtered;
-            }, [apps, collections, selectedCollection, installedOnly, unplayedOnly, onlyGames]);
+            }, [apps, collections, selectedCollection, installedOnly, unplayedOnly, onlyGames, hasHltbCache, durationFilter, hltbMap]);
 
-            const deckKey = `${selectedCollection}_${installedOnly}_${unplayedOnly}_${onlyGames}`;
+            const deckKey = `${selectedCollection}_${installedOnly}_${unplayedOnly}_${onlyGames}_${hasHltbCache ? durationFilter : "all"}`;
             const lastDeckKeyRef = useRef("");
 
             useEffect(() => {
@@ -1558,7 +1614,19 @@ let PluginEntryPointMain = function() {
                 ),
 
                 h("div", { style: styles.formRow },
-                    h("label", { style: styles.label }, "SELECT SOURCE DECK:"),
+                    h("div", {
+                        style: {
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            marginBottom: "4px"
+                        }
+                    },
+                        h("label", { style: { ...styles.label, marginBottom: 0 } }, "SELECT SOURCE DECK:"),
+                        h("span", { style: { fontSize: "11px", color: "#66c0f4", fontWeight: "700" } },
+                            `${candidates.length} Cards in Deck`
+                        )
+                    ),
                     h(CustomDeckDropdown, {
                         value: selectedCollection,
                         options: collections.length === 0
@@ -1566,7 +1634,6 @@ let PluginEntryPointMain = function() {
                             : collections.map(c => ({ value: c.id, label: c.name })),
                         onChange: val => {
                             setSelectedCollection(val);
-                            setShufflesCount(0);
                         }
                     })
                 ),
@@ -1577,7 +1644,6 @@ let PluginEntryPointMain = function() {
                         label: "Installed",
                         onChange: val => {
                             setInstalledOnly(val);
-                            setShufflesCount(0);
                         }
                     }),
                     h(CustomCheckbox, {
@@ -1585,7 +1651,6 @@ let PluginEntryPointMain = function() {
                         label: "Unplayed",
                         onChange: val => {
                             setUnplayedOnly(val);
-                            setShufflesCount(0);
                         }
                     }),
                     h("div", {
@@ -1608,12 +1673,32 @@ let PluginEntryPointMain = function() {
                             ],
                             onChange: val => {
                                 setMaxShuffles(Number(val));
-                                setShufflesCount(0);
                             }
                         })
                     ),
-                    h("span", { style: { fontSize: "11px", color: "#66c0f4", fontWeight: "700" } },
-                        `${candidates.length} Cards in Deck`
+                    hasHltbCache && h("div", {
+                        style: {
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            fontSize: "11px",
+                            color: "#8f98a0"
+                        }
+                    },
+                        h("span", { style: { color: "#c7d5e0", fontWeight: "600" } }, "Length:"),
+                        h(CustomMiniDropdown, {
+                            value: durationFilter,
+                            alignRight: true,
+                            options: [
+                                { value: "all", label: "All" },
+                                { value: "short", label: "Short (<5h)" },
+                                { value: "regular", label: "Medium (5-20h)" },
+                                { value: "epic", label: "Long (>20h)" }
+                            ],
+                            onChange: val => {
+                                setDurationFilter(val);
+                            }
+                        })
                     )
                 ),
 
@@ -1628,7 +1713,8 @@ let PluginEntryPointMain = function() {
                             index: idx,
                             totalCards: fanDeckGames.length,
                             shufflePhase: shufflePhase,
-                            isWinner: isWinner
+                            isWinner: isWinner,
+                            hltbInfo: game ? hltbMap[String(game.appid)] : null
                         });
                     })
                 ),
@@ -1926,15 +2012,7 @@ let PluginEntryPointMain = function() {
                 console.error("[SteamRoulette] definePlugin setup error:", err);
             }
 
-            const iconElement = (MILLENNIUM_API.IconsModule && MILLENNIUM_API.IconsModule.Settings)
-                ? h(MILLENNIUM_API.IconsModule.Settings, null)
-                : h("span", { style: { fontSize: "16px" } }, "🎰");
-
-            return {
-                title: "Steam Roulette",
-                icon: iconElement,
-                content: h(RandomPickerUI, null)
-            };
+            return {};
         });
 
         exports.default = definePlugin;
